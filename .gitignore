@@ -1,0 +1,8 @@
+# API keys stay on each person's machine
+.env
+
+# Downloaded HTML cache (clean_policies.py downloads it again when needed)
+data/raw/
+
+__pycache__/
+*.pyc
