@@ -28,14 +28,31 @@ COLUMNS = ["question_id", "tier", "question", "reference_answer", "source_docume
 SCORE_COLUMNS = ["baseline_score", "rag_score", "failure_type"]
 
 
-def hit(question: dict, retrieved: list[tuple[str, str, float]], chunks: dict) -> str:
-    """'yes' if every source passage is inside a retrieved chunk, 'partial' if some are, else 'no'."""
+def hit(question: dict, retrieved: list[dict], chunks: dict) -> str:
+    """Did retrieval find the question's source passages?
+
+    A passage counts as found when it appears word for word in a retrieved chunk from
+    the right document. Returns 'yes' if all passages were found, 'partial' if some
+    were, 'no' if none were, and 'n/a' for unanswerable questions (no passages).
+    """
     if question["source_passage"] == "(none)":
         return "n/a"
-    pairs = list(zip(question["source_document"].split(" | "), question["source_passage"].split(" | ")))
-    found = sum(any(chunks[cid]["source_document"] == doc and passage in chunks[cid]["text"]
-                    for cid, _, _ in retrieved) for doc, passage in pairs)
-    return "yes" if found == len(pairs) else "partial" if found else "no"
+    documents = question["source_document"].split(" | ")
+    passages = question["source_passage"].split(" | ")
+    retrieved_chunks = [chunks[result["id"]] for result in retrieved]
+
+    found = 0
+    for document, passage in zip(documents, passages):
+        for chunk in retrieved_chunks:
+            if chunk["source_document"] == document and passage in chunk["text"]:
+                found += 1
+                break
+
+    if found == len(passages):
+        return "yes"
+    if found > 0:
+        return "partial"
+    return "no"
 
 
 class Cache:
@@ -102,7 +119,7 @@ def main() -> None:
     for question in questions:
         retrieved = rag.retrieve(collection, question["question"])
         row = {column: question.get(column, "") for column in COLUMNS}
-        row["retrieved_chunks"] = " | ".join(cid for cid, _, _ in retrieved)
+        row["retrieved_chunks"] = " | ".join(result["id"] for result in retrieved)
         row["hit"] = hit(question, retrieved, chunks)
         if not args.retrieval_only:
             print(question["question_id"])

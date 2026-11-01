@@ -69,48 +69,63 @@ def chunk_policy(path: Path) -> list[dict]:
 
     A chunk starts at each paragraph (usually a numbered clause) and keeps the lists
     and tables that follow it, so "(16) Library members have:" stays with its (a), (b),
-    (c). Chunks over MAX_CHUNK_WORDS are split at block boundaries. Each chunk is
-    labelled with the policy title and the headings it sits under.
+    (c). Chunks over MAX_CHUNK_WORDS are split between lines. Each chunk is labelled
+    with the policy title and the headings it sits under.
     """
     title, blocks = read_policy(path)
-    headings = {}  # heading level -> text
-    groups = []    # (heading path, [blocks])
+    headings = {}   # heading level (2 for ##, 3 for ###, ...) -> heading text
+    clauses = []    # each clause: the headings it sits under, and its blocks
+    current = None  # the clause being built; None right after a heading
+
     for block in blocks:
         if block.startswith("# "):
-            continue
+            continue  # the policy title, which is already in every label
+
         if block.startswith("#"):
+            # A new heading replaces any heading at the same or a deeper level.
             level = len(block) - len(block.lstrip("#"))
             headings = {lvl: text for lvl, text in headings.items() if lvl < level}
             headings[level] = block.lstrip("#").strip()
-            groups.append(None)  # a heading always ends the current chunk
+            current = None  # a heading always ends the current clause
             continue
-        attaches = block.startswith(("- ", "|")) and groups and groups[-1] is not None
-        if attaches:
-            groups[-1][1].append(block)
+
+        is_list_or_table = block.startswith("- ") or block.startswith("|")
+        if is_list_or_table and current is not None:
+            current["blocks"].append(block)  # belongs to the clause above it
         else:
-            groups.append((" > ".join(headings[lvl] for lvl in sorted(headings)), [block]))
+            heading_path = " > ".join(headings[level] for level in sorted(headings))
+            current = {"headings": heading_path, "blocks": [block]}
+            clauses.append(current)
 
     chunks = []
-    for group in filter(None, groups):
-        heading, parts = group
-        for piece in split_long(parts):
+    for clause in clauses:
+        label = f"{title} > {clause['headings']}" if clause["headings"] else title
+        for piece in split_long(clause["blocks"]):
             chunks.append({
                 "id": f"{path.stem}#{len(chunks) + 1}",
                 "source_document": path.name,
-                "label": f"{title} > {heading}" if heading else title,
+                "label": label,
                 "text": piece,
             })
     return chunks
 
 
 def split_long(blocks: list[str]) -> list[str]:
-    """Join blocks into pieces of at most MAX_CHUNK_WORDS (a single longer block stays whole)."""
-    pieces, current = [], []
+    """Join a clause's blocks into pieces of at most MAX_CHUNK_WORDS words.
+
+    It only splits between lines, so a single line longer than the limit stays whole.
+    """
+    pieces = []
+    current = []
+    current_words = 0
     for line in "\n".join(blocks).split("\n"):
-        if current and len(" ".join(current + [line]).split()) > MAX_CHUNK_WORDS:
+        line_words = len(line.split())
+        if current and current_words + line_words > MAX_CHUNK_WORDS:
             pieces.append("\n".join(current))
             current = []
+            current_words = 0
         current.append(line)
+        current_words += line_words
     pieces.append("\n".join(current))
     return pieces
 
@@ -144,28 +159,42 @@ def embed_locally(texts: list[str]) -> list[list[float]]:
     return _embedder.encode(texts).tolist()
 
 
+def text_key(text: str) -> str:
+    """A short fingerprint of a text, used to look it up in the embedding cache."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def embed_hosted(texts: list[str]) -> list[list[float]]:
-    """Embed through the Sandbox, 64 texts per request, reusing vectors saved in EMBED_CACHE."""
+    """Embed through the Sandbox, reusing any vectors already saved in EMBED_CACHE."""
     global _embed_cache
     if _embed_cache is None:
-        _embed_cache = {}
+        _embed_cache = {}  # text_key -> vector
         if EMBED_CACHE.exists():
             saved = np.load(EMBED_CACHE)
-            _embed_cache = dict(zip(saved["keys"], saved["vectors"]))
+            for key, vector in zip(saved["keys"], saved["vectors"]):
+                _embed_cache[key] = vector
 
-    def key(text):
-        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    # Only texts that are not in the cache yet are sent, each once.
+    missing = []
+    for text in texts:
+        if text_key(text) not in _embed_cache and text not in missing:
+            missing.append(text)
 
-    missing = [text for text in dict.fromkeys(texts) if key(text) not in _embed_cache]
+    # The Sandbox accepts a list of texts, so send them 64 at a time.
     for start in range(0, len(missing), 64):
         batch = missing[start:start + 64]
         result = client(SANDBOX_URL).embeddings.create(model=EMBED_MODEL, input=batch)
         for text, item in zip(batch, result.data):
-            _embed_cache[key(text)] = np.array(item.embedding, dtype=np.float32)
+            _embed_cache[text_key(text)] = np.array(item.embedding, dtype=np.float32)
+
     if missing:
         EMBED_CACHE.parent.mkdir(exist_ok=True)
-        np.savez_compressed(EMBED_CACHE, keys=np.array(list(_embed_cache)), vectors=np.stack(list(_embed_cache.values())))
-    return [_embed_cache[key(text)].tolist() for text in texts]
+        np.savez_compressed(
+            EMBED_CACHE,
+            keys=np.array(list(_embed_cache.keys())),
+            vectors=np.stack(list(_embed_cache.values())),
+        )
+    return [_embed_cache[text_key(text)].tolist() for text in texts]
 
 
 def build_index(chunks: list[dict]):
@@ -176,10 +205,17 @@ def build_index(chunks: list[dict]):
     return collection
 
 
-def retrieve(collection, question: str, k: int = TOP_K) -> list[tuple[str, str, float]]:
-    """Return the k closest chunks as (id, document text, cosine distance)."""
+def retrieve(collection, question: str, k: int = TOP_K) -> list[dict]:
+    """Return the k chunks closest to the question, closest first.
+
+    Each result has the chunk's id, its document (label line and text, as embedded)
+    and its cosine distance to the question (0 means identical).
+    """
     result = collection.query(query_embeddings=embed([question]), n_results=k)
-    return list(zip(result["ids"][0], result["documents"][0], result["distances"][0]))
+    retrieved = []
+    for chunk_id, document, distance in zip(result["ids"][0], result["documents"][0], result["distances"][0]):
+        retrieved.append({"id": chunk_id, "document": document, "distance": distance})
+    return retrieved
 
 
 # --- LLM -------------------------------------------------------------------
@@ -215,8 +251,8 @@ def ask_llm(prompt: str) -> str:
     return response.choices[0].message.content.strip()
 
 
-def rag_prompt(question: str, retrieved: list[tuple[str, str, float]]) -> str:
-    context = "\n\n".join(document for _, document, _ in retrieved)
+def rag_prompt(question: str, retrieved: list[dict]) -> str:
+    context = "\n\n".join(chunk["document"] for chunk in retrieved)
     return RAG_PROMPT.format(decline=DECLINE, context=context, question=question)
 
 
