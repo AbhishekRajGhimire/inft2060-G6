@@ -2,7 +2,7 @@
 
 A retrieval-augmented generation (RAG) system that answers questions about 15 UON policies, compared against the same model without retrieval.
 
-New to the project? Start with [HOW_TO_RUN.md](HOW_TO_RUN.md).
+Start with [HOW_TO_RUN.md](HOW_TO_RUN.md).
 
 ## Pipeline
 
