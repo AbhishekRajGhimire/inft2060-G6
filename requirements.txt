@@ -1,5 +1,7 @@
-beautifulsoup4>=4.12
-requests>=2.31
-openai>=1.0
-sentence-transformers>=3.0
-chromadb>=1.0
+# Exact versions the pipeline was tested with (Python 3.13)
+beautifulsoup4==4.13.4
+requests==2.32.4
+openai==3.42.0
+chromadb==1.5.9
+numpy==2.1.2
+sentence-transformers==6.2.0
