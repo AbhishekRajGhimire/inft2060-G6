@@ -5,9 +5,9 @@ Components (see the AI Project Tool Access Guide):
     - vector index: Chroma, in memory, cosine distance
     - LLM: gpt-4o-mini through the UON AI Sandbox (OpenAI-compatible API)
 
-Both can run locally instead if the Sandbox is down: change the EMBED_MODEL line
-to MINILM (sentence-transformers, free) and the LLM line to OLLAMA (needs
-`ollama pull qwen2.5:7b`). Use the same LLM for the baseline and the RAG run.
+If the Sandbox is down, embeddings can run locally: change the EMBED_MODEL line
+to MINILM (sentence-transformers, free). Use the same LLM for the baseline and
+the RAG run.
 """
 
 import hashlib
@@ -22,9 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CORPUS_DIR = ROOT / "data" / "corpus"
 
 SANDBOX_URL = "https://aisandbox-admin.newcastle.edu.au/"
-SANDBOX = (SANDBOX_URL, "gpt-4o-mini")
-OLLAMA = ("http://localhost:11434/v1", "qwen2.5:7b")
-LLM_BASE_URL, LLM_MODEL = SANDBOX  # change to OLLAMA to run locally
+LLM_MODEL = "gpt-4o-mini"
 
 ADA = "text-embedding-ada-002"
 MINILM = "all-MiniLM-L6-v2"
@@ -183,7 +181,7 @@ def embed_hosted(texts: list[str]) -> list[list[float]]:
     # The Sandbox accepts a list of texts, so send them 64 at a time.
     for start in range(0, len(missing), 64):
         batch = missing[start:start + 64]
-        result = client(SANDBOX_URL).embeddings.create(model=EMBED_MODEL, input=batch)
+        result = sandbox().embeddings.create(model=EMBED_MODEL, input=batch)
         for text, item in zip(batch, result.data):
             _embed_cache[text_key(text)] = np.array(item.embedding, dtype=np.float32)
 
@@ -220,7 +218,7 @@ def retrieve(collection, question: str, k: int = TOP_K) -> list[dict]:
 
 # --- LLM -------------------------------------------------------------------
 
-_clients = {}
+_client = None
 
 
 def read_api_key() -> str:
@@ -233,20 +231,21 @@ def read_api_key() -> str:
     raise SystemExit("No API key: copy .env.example to .env and fill in LLM_API_KEY.")
 
 
-def client(base_url: str) -> openai.OpenAI:
-    """An OpenAI-compatible client for the Sandbox or for a local Ollama server."""
-    if base_url not in _clients:
-        _clients[base_url] = openai.OpenAI(
-            api_key="ollama" if base_url == OLLAMA[0] else read_api_key(),
-            base_url=base_url,
+def sandbox() -> openai.OpenAI:
+    """The client for the UON AI Sandbox, which works like the OpenAI API."""
+    global _client
+    if _client is None:
+        _client = openai.OpenAI(
+            api_key=read_api_key(),
+            base_url=SANDBOX_URL,
             # From the Tool Access Guide: avoids blocks by the university firewall.
             default_headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:100.0) Gecko/20100101 Firefox/100.0"},
         )
-    return _clients[base_url]
+    return _client
 
 
 def ask_llm(prompt: str) -> str:
-    response = client(LLM_BASE_URL).chat.completions.create(
+    response = sandbox().chat.completions.create(
         model=LLM_MODEL, messages=[{"role": "user", "content": prompt}], temperature=0, max_tokens=300)
     return response.choices[0].message.content.strip()
 
