@@ -2,6 +2,8 @@
 
 A retrieval-augmented generation (RAG) system that answers questions about 15 UON policies, compared against the same model without retrieval.
 
+New to the project? Start with [HOW_TO_RUN.md](HOW_TO_RUN.md).
+
 ## Pipeline
 
 - Chunks: one numbered clause per chunk (with its lists and tables), labelled with the policy and section, at most 200 words.
