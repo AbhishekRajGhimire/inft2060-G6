@@ -59,6 +59,17 @@ python src/summarise_results.py results/results.csv
 This prints the hit rate and how many answers got each score, per tier.
 If it lists "Unrecognised scores", fix those typos in the CSV and run it again.
 
+### Ask your own questions
+
+```bash
+python src/ask.py
+```
+
+Type a question and press Enter to get an answer and the policy sections it came from.
+Press Enter on an empty line to quit.
+This needs the key (step 4 of the setup), and each question uses a little of the group's budget, so keep it to demos and report examples.
+It does not change the experiment results.
+
 ### Rerun the experiment
 
 ```bash

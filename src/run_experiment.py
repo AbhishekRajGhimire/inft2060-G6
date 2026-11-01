@@ -112,7 +112,8 @@ def main() -> None:
     chunks = {chunk["id"]: chunk for chunk in chunk_list}
     print(f"Indexing {len(chunk_list)} chunks with {rag.EMBED_MODEL}...")
     collection = rag.build_index(chunk_list)
-    rag.embed([question["question"] for question in questions])  # one batched request, then cached
+    rag.embed([question["question"] for question in questions])  # one batched request
+    rag.save_embeddings()
     cache = Cache()
 
     rows = []

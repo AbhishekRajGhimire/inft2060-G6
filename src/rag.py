@@ -141,6 +141,7 @@ def chunk_document(chunk: dict) -> str:
 
 _embedder = None
 _embed_cache = None
+_unsaved_embeddings = False
 
 
 def embed(texts: list[str]) -> list[list[float]]:
@@ -163,8 +164,11 @@ def text_key(text: str) -> str:
 
 
 def embed_hosted(texts: list[str]) -> list[list[float]]:
-    """Embed through the Sandbox, reusing any vectors already saved in EMBED_CACHE."""
-    global _embed_cache
+    """Embed through the Sandbox, reusing any vectors already saved in EMBED_CACHE.
+
+    New vectors are kept in memory; call save_embeddings() to write them to disk.
+    """
+    global _embed_cache, _unsaved_embeddings
     if _embed_cache is None:
         _embed_cache = {}  # text_key -> vector
         if EMBED_CACHE.exists():
@@ -184,15 +188,22 @@ def embed_hosted(texts: list[str]) -> list[list[float]]:
         result = sandbox().embeddings.create(model=EMBED_MODEL, input=batch)
         for text, item in zip(batch, result.data):
             _embed_cache[text_key(text)] = np.array(item.embedding, dtype=np.float32)
-
-    if missing:
-        EMBED_CACHE.parent.mkdir(exist_ok=True)
-        np.savez_compressed(
-            EMBED_CACHE,
-            keys=np.array(list(_embed_cache.keys())),
-            vectors=np.stack(list(_embed_cache.values())),
-        )
+            _unsaved_embeddings = True
     return [_embed_cache[text_key(text)].tolist() for text in texts]
+
+
+def save_embeddings() -> None:
+    """Write any new Sandbox embeddings to EMBED_CACHE, so they are only paid for once."""
+    global _unsaved_embeddings
+    if not _unsaved_embeddings:
+        return
+    EMBED_CACHE.parent.mkdir(exist_ok=True)
+    np.savez_compressed(
+        EMBED_CACHE,
+        keys=np.array(list(_embed_cache.keys())),
+        vectors=np.stack(list(_embed_cache.values())),
+    )
+    _unsaved_embeddings = False
 
 
 def build_index(chunks: list[dict]):

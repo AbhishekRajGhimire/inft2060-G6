@@ -18,6 +18,7 @@ Start with [HOW_TO_RUN.md](HOW_TO_RUN.md).
 - `src/rag.py` - chunking, embedding, retrieval, prompts and the LLM call. Settings are at the top.
 - `src/run_experiment.py` - runs the test set through the baseline and RAG, writes `results/results.csv`.
 - `src/summarise_results.py` - prints hit rate and score tables from a hand-scored results file.
+- `src/ask.py` - ask the system your own questions, one at a time.
 - `src/clean_policies.py` - downloads the policies from the UON Policy Library and rebuilds `data/corpus/`.
 - `src/check_questions.py` - checks every source passage appears word for word in the corpus.
 
