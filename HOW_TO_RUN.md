@@ -26,7 +26,7 @@ Plain "CSV" can break special characters such as curly quotes.
 
 ## Part 2: Run the code yourself (optional)
 
-You only need this to rerun the experiment or make the report tables.
+You only need this to make the report tables, ask your own questions or rerun the experiment.
 
 ### One-time setup
 
