@@ -49,7 +49,7 @@ The key's budget is shared by the group, so try small runs first.
 ## Scoring
 
 Fill in `baseline_score` and `rag_score` in `results/results.csv` with one of: correct, partly correct, incorrect, declined.
-For unanswerable questions, declining is correct.
+For unanswerable questions, write "declined" when the model refuses; `summarise_results.py` counts that as correct.
 For RAG answers that are not correct, set `failure_type` to retrieval (hit is not "yes") or generation (hit is "yes").
 Retrieved chunk ids can be looked up in `results/chunks.csv`.
 

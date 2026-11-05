@@ -16,7 +16,8 @@ Most of you only need Part 1 (scoring), which needs no setup at all.
 | `failure_type` | Only when the RAG answer is not correct: retrieval or generation |
 
 - Compare each answer with `reference_answer`.
-- For unanswerable questions (tier 3), "declined" is the right outcome.
+- For unanswerable questions (tier 3), write "declined" when the model refuses to answer.
+The report tables count that as correct, so you do not need to change it.
 - `failure_type` is retrieval if the `hit` column is not "yes", and generation if it is "yes" but the answer is still wrong.
 - Score the answer itself, not the `hit` column: some answers are right even when `hit` says "partial", because the model found the fact in a nearby clause.
 - To see what text was retrieved, look up the ids from `retrieved_chunks` in `results/chunks.csv`.

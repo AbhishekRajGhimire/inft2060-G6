@@ -1,8 +1,10 @@
 """Print the report tables from a hand-scored results file.
 
-Scores are one of: correct, partly correct, incorrect, declined (for unanswerable
-questions, declining is the correct outcome, as in the Week 8 lecture).
-failure_type is "retrieval" or "generation" for RAG answers that are not correct.
+Scores are one of: correct, partly correct, incorrect, declined.
+On an unanswerable question, declining is the right answer, so the tables count
+"declined" there as correct. The CSV itself is left as the scorers wrote it.
+failure_type is "retrieval" or "generation" for RAG answers that are not correct,
+and blank or "none" otherwise.
 
 Usage:
     python src/summarise_results.py results/results.csv
@@ -23,6 +25,8 @@ def score_table(rows: list[dict], column: str) -> None:
     unrecognised = set()
     for row in rows:
         score = row[column].strip().lower() or "not scored"
+        if row["tier"] == "3 Unanswerable" and score == "declined":
+            score = "correct"  # refusing is the right answer when the policies do not say
         if score not in COLUMNS:
             unrecognised.add(score)
         by_tier[row["tier"]][score] += 1
@@ -52,7 +56,10 @@ def main() -> None:
     score_table(rows, "baseline_score")
     score_table(rows, "rag_score")
 
-    failures = Counter(row["failure_type"].strip().lower() for row in rows if row["failure_type"].strip())
+    print('\nOn Unanswerable questions, "declined" is counted as correct.')
+
+    failure_types = [row["failure_type"].strip().lower() for row in rows]
+    failures = Counter(failure for failure in failure_types if failure not in ("", "none"))
     print("\nRAG failure types:", dict(failures) or "none recorded")
 
 
